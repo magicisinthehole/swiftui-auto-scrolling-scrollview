@@ -16,13 +16,30 @@ When a change is detected:
 
 Include SwiftUIAutoScrollingScrollView in your project.
 
-In Xcode:
-- Add this package dependency by pasting the URL:
+### In Xcode:
+- Add this package dependency by pasting the URL: [https://github.com/drewster99/swiftui-auto-scrolling-scrollview](https://github.com/drewster99/swiftui-auto-scrolling-scrollview)
 
-In a Swift Package:
-- Add this dependency clause
 
-Then, in your code. something like this:
+### As a dependency in your own Swift Package
+
+In a Swift Package's `Package.swift` file, add this to your package's "dependencies" array:
+```swift
+.package(url: "https://github.com/drewster99/swiftui-auto-scrolling-scrollview.git", branch: "main")
+```
+
+Then, add the dependency to any target's you've declared. If it doesn't already have one, add one after `name`:
+```swift
+.target(
+  name: "MyTarget",
+  dependencies: [
+      .product(name: "SwiftUIAutoScrollingScrollView", package: "swiftui-auto-scrolling-scrollview")
+]
+```
+
+### Use it in your own Swift code
+
+Use it like you'd use `ScrollView`, with the addition of the `autoScrollingOnChangeOf` parameter, like this:
+
 ```swift
 import Foundation
 import SwiftUI
