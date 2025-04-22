@@ -19,7 +19,7 @@ import SwiftUI
 /// to the bottom again. However, if it wasn't near the bottom, no automatic
 /// scrolling will be performed.
 @available(iOS 18.0, macOS 15, tvOS 13.0, watchOS 6.0, *)
-public struct AutoScrollingScrollView<Content, V> : View where Content : View, V : Equatable {
+public struct AutoScrollingScrollView<Content, OverlayContent, V> : View where Content : View, OverlayContent: View, V : Equatable {
     /// An identifier for the current message.  This is so
     /// we can pull it out of the `ForEach` and (hopefully) not re-render ALL
     /// of the content when the current message changes.
@@ -31,11 +31,16 @@ public struct AutoScrollingScrollView<Content, V> : View where Content : View, V
 
     /// `true` if the bottom of the scroll view is visible
     @State private var isBottomOfScrollViewContentVisible = false
+    @Binding private var shouldScrollOnAnyChange: Bool
 
     @Namespace private var bottomOfScrollView
 
     /// The scroll view's content.
     public var content: Content
+
+    /// Overlay content is overlaid at the bottom of the scroll area when there is additional content
+    /// which will not be automatically scrolled to reveal
+    public var overlayContent: OverlayContent
 
     /// The scrollable axes of the scroll view.
     ///
@@ -57,31 +62,74 @@ public struct AutoScrollingScrollView<Content, V> : View where Content : View, V
     ///     in this value are used to trigger automatic scroll-to-bottom.
     ///   - content: The view builder that creates the scrollable view.
     @available(iOS 18.0, macOS 15.0, tvOS 13.0, watchOS 6.0, *)
-    public init(_ axes: Axis.Set = .vertical, autoScrollingOnChangeOf value: V, @ViewBuilder content: () -> Content) {
+    public init(_ axes: Axis.Set = .vertical, shouldScrollOnAnyChange: Binding<Bool>, autoScrollingOnChangeOf value: V, @ViewBuilder overlayContent: () -> OverlayContent, @ViewBuilder content: () -> Content) {
         self.axes = axes
+        self._shouldScrollOnAnyChange = shouldScrollOnAnyChange
         self.value = value
         self.content = content()
+        self.overlayContent = overlayContent()
+    }
+
+    @State private var scrollPhase: ScrollPhase = .idle
+
+    @State private var shouldDisplayScrollToBottomOverlay: Bool = false
+    private func updateShouldDisplayScrollToBottomOverlay() {
+        let newValue = !isBottomOfScrollViewContentVisible && scrollPhase == .idle
+        if shouldDisplayScrollToBottomOverlay != newValue {
+            withAnimation(Animation.easeInOut(duration: 0.5)) {
+                shouldDisplayScrollToBottomOverlay = newValue
+            }
+        }
     }
 
     /// The content and behavior of the scroll view.
-    @MainActor @preconcurrency public var body: some View {
+    public var body: some View {
         ScrollViewReader { scrollProxy in
             ScrollView(axes) {
                 content
                     .overlay(alignment: .bottom) {
                         Text("")
+                        // This .frame is kind of a hack, so this is still not ideal
+                            .frame(height: 111)
                             .onScrollVisibilityChange { visible in
-                                isBottomOfScrollViewContentVisible = visible
+                                Task { @MainActor in
+                                    isBottomOfScrollViewContentVisible = visible
+                                    updateShouldDisplayScrollToBottomOverlay()
+                                }
                             }
                     }
                     .id(bottomOfScrollView)
             }
+            .onScrollPhaseChange({ _, newPhase in
+                Task { @MainActor in
+                    if scrollPhase != newPhase {
+                        scrollPhase = newPhase
+                        updateShouldDisplayScrollToBottomOverlay()
+                    }
+                }
+            })
+            .overlay(alignment: .bottom) {
+                Button {
+                    Task { @MainActor in
+                        withAnimation {
+                            scrollProxy.scrollTo(bottomOfScrollView, anchor: .bottom)
+                        }
+                    }
+                } label: {
+                    overlayContent
+                }
+                .buttonStyle(.plain)
+                .disabled(!shouldDisplayScrollToBottomOverlay)
+                .opacity(shouldDisplayScrollToBottomOverlay ? 1.0 : 0.0)
+            }
             .onChange(of: value) {
-                // We got new content - if we can see the bottom of the
-                // ScrollView, then we should scroll to the bottom (of the
-                // new content)
-                if isBottomOfScrollViewContentVisible {
-                    scrollProxy.scrollTo(bottomOfScrollView, anchor: .bottom)
+                Task { @MainActor in
+                    // We got new content - if we can see the bottom of the
+                    // ScrollView, then we should scroll to the bottom (of the
+                    // new content)
+                    if isBottomOfScrollViewContentVisible || shouldScrollOnAnyChange {
+                        scrollProxy.scrollTo(bottomOfScrollView, anchor: .bottom)
+                    }
                 }
             }
         }
