@@ -92,16 +92,21 @@ public struct AutoScrollingScrollView<Content, OverlayContent, V> : View where C
                         // This .frame is kind of a hack, so this is still not ideal
                             .frame(height: 111)
                             .onScrollVisibilityChange { visible in
-                                Task { @MainActor in
-                                    isBottomOfScrollViewContentVisible = visible
-                                    updateShouldDisplayScrollToBottomOverlay()
+                                DispatchQueue.main.async {
+                                    if isBottomOfScrollViewContentVisible != visible {
+                                        isBottomOfScrollViewContentVisible = visible
+                                        DispatchQueue.main.async {
+                                            updateShouldDisplayScrollToBottomOverlay()
+                                        }
+                                    }
                                 }
                             }
                     }
                     .id(bottomOfScrollView)
             }
             .onScrollPhaseChange({ _, newPhase in
-                Task { @MainActor in
+//                Task { @MainActor in
+                    DispatchQueue.main.async {
                     if scrollPhase != newPhase {
                         scrollPhase = newPhase
                         updateShouldDisplayScrollToBottomOverlay()
@@ -111,8 +116,11 @@ public struct AutoScrollingScrollView<Content, OverlayContent, V> : View where C
             .overlay(alignment: .bottom) {
                 Button {
                     Task { @MainActor in
-                        withAnimation {
-                            scrollProxy.scrollTo(bottomOfScrollView, anchor: .bottom)
+                        for index in 0 ... 3 {
+                            let delay = TimeInterval(index) * 0.25 / 60.0
+                            withAnimation(Animation.easeIn(duration: 0.2).delay(delay)) {
+                                scrollProxy.scrollTo(bottomOfScrollView, anchor: .bottom)
+                            }
                         }
                     }
                 } label: {
