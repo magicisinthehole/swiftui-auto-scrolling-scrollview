@@ -135,7 +135,7 @@ public struct AutoScrollingScrollView<Content, OverlayContent, V, ScrollPosition
                     }
                 }
             )
-            .defaultScrollAnchor(.bottom) // Corrected: Removed non-standard 'for: .sizeChanges'
+            .defaultScrollAnchor(shouldAutoScrollOnNewContent ? .bottom : nil) // Conditionally apply anchor
             .scrollPosition($scrollViewPositionChecker, anchor: .bottom)
             .onScrollPhaseChange({ _, newPhase in
                 DispatchQueue.main.async {
