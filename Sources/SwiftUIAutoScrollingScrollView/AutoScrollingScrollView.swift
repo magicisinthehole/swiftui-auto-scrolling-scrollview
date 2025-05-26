@@ -21,7 +21,7 @@ private let logger = Logger(subsystem: "SwiftUIAutoScrollingScrollView", categor
 /// was already scrolled to the bottom (or very near to it), it will be scrolled
 /// to the bottom again. However, if it wasn't near the bottom, no automatic
 /// scrolling will be performed.
-@available(iOS 18.0, macOS 15.0, tvOS 13.0, watchOS 6.0, *) // Corrected availability
+@available(iOS 18.0, macOS 15.0, tvOS 13.0, watchOS 6.0, *)
 public struct AutoScrollingScrollView<Content, OverlayContent, V, ScrollPositionType> : View where Content : View, OverlayContent: View, V : Equatable, ScrollPositionType : (Hashable & Sendable) {
     /// An identifier for the current message.  This is so
     /// we can pull it out of the `ForEach` and (hopefully) not re-render ALL
