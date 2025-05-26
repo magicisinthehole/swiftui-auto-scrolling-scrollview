@@ -21,7 +21,7 @@ private let logger = Logger(subsystem: "SwiftUIAutoScrollingScrollView", categor
 /// was already scrolled to the bottom (or very near to it), it will be scrolled
 /// to the bottom again. However, if it wasn't near the bottom, no automatic
 /// scrolling will be performed.
-@available(iOS 18.0, macOS 15, tvOS 13.0, watchOS 6.0, *)
+@available(iOS 18.0, macOS 15.0, tvOS 13.0, watchOS 6.0, *)
 public struct AutoScrollingScrollView<Content, OverlayContent, V, ScrollPositionType> : View where Content : View, OverlayContent: View, V : Equatable, ScrollPositionType : (Hashable & Sendable) {
     /// An identifier for the current message.  This is so
     /// we can pull it out of the `ForEach` and (hopefully) not re-render ALL
@@ -160,33 +160,58 @@ public struct AutoScrollingScrollView<Content, OverlayContent, V, ScrollPosition
              */
             .overlay(alignment: .bottom) {
                 Button {
-                    for index in 0 ... 3 {
-                        let delay = TimeInterval(index) * 0.55
-                        withAnimation(Animation.easeIn(duration: 0.25).delay(0.25)) {
-//                            scrollProxy.scrollTo(bottomOfScrollView, anchor: .bottom)
-                            scrollViewPositionChecker.scrollTo(edge: .bottom)
-                        }
+                    // User explicitly wants to be at the bottom.
+                    logger.log("AutoScrollingScrollView: Scroll to bottom button tapped, scrolling to ID: \(String(describing: self.lastScrollViewID))")
+                    withAnimation(.easeInOut(duration: 0.3)) { // Add animation for smoothness
+                        scrollProxy.scrollTo(self.lastScrollViewID, anchor: .bottom)
                     }
                     shouldAutoScrollOnNewContent = true
+                    // Optionally, if lockToBottom is intended to be two-way:
+                    // self.lockToBottom = true
                 } label: {
                     overlayContent
                 }
                 .buttonStyle(.plain)
                 .disabled(!shouldDisplayScrollToBottomOverlay)
-                .opacity(shouldDisplayScrollToBottomOverlay ? 1.0 : 0.0).animation(Animation.easeInOut(duration: 0.55))
+                .opacity(shouldDisplayScrollToBottomOverlay ? 1.0 : 0.0)
+                .animation(.easeInOut(duration: 0.55), value: shouldDisplayScrollToBottomOverlay) // Updated animation
             }
-
-            .onChange(of: value) {
-//                Task { @MainActor in
-//                    // We got new content - if we can see the bottom of the
-//                    // ScrollView, then we should scroll to the bottom (of the
-//                    // new content)
-//                    if shouldAutoScrollOnNewContent {
-//                        logger.log(">>> auto scroll to bottom \(Date())")
-//                        scrollViewPositionChecker.scrollTo(edge: .bottom)
-////                        scrollProxy.scrollTo(bottomOfScrollView, anchor: .bottom)
-//                    }
-//                }
+            .onChange(of: value) { oldValue, newValue in
+                // Triggered when the external `value` binding changes, indicating new content or state.
+                Task { @MainActor in
+                    if self.lockToBottom || self.shouldAutoScrollOnNewContent {
+                        logger.log("AutoScrollingScrollView: New value detected (lockToBottom: \(self.lockToBottom), shouldAutoScroll: \(self.shouldAutoScrollOnNewContent)), auto-scrolling to ID: \(String(describing: self.lastScrollViewID))")
+                        withAnimation(.easeInOut(duration: 0.3)) { // Smooth animation for auto-scroll
+                            scrollProxy.scrollTo(self.lastScrollViewID, anchor: .bottom)
+                        }
+                    } else {
+                        logger.log("AutoScrollingScrollView: New value detected, but auto-scroll conditions not met (lockToBottom: \(self.lockToBottom), shouldAutoScroll: \(self.shouldAutoScrollOnNewContent)).")
+                    }
+                }
+            }
+            .onChange(of: scrollViewPositionChecker.viewID(type: ScrollPositionType.self)) { _, newViewIDAtBottom in
+                // This monitors the actual bottom-most visible item's ID.
+                // If the user manually scrolls back to the `lastScrollViewID`, we re-enable auto-scrolling.
+                if newViewIDAtBottom == self.lastScrollViewID {
+                    if !self.shouldAutoScrollOnNewContent {
+                        logger.log("AutoScrollingScrollView: User manually scrolled to bottom (ID: \(String(describing: newViewIDAtBottom))), re-enabling auto-scroll.")
+                        self.shouldAutoScrollOnNewContent = true
+                    }
+                }
+                // If `newViewIDAtBottom` is not `lastScrollViewID`, it means the user has scrolled up.
+                // The DragGesture's `onChanged` callback will have already set `shouldAutoScrollOnNewContent = false`.
+            }
+            .onChange(of: lockToBottom) { _, newLockState in
+                // Handles external changes to the `lockToBottom` binding.
+                if newLockState {
+                    Task { @MainActor in
+                        logger.log("AutoScrollingScrollView: lockToBottom externally set to true. Ensuring scroll to ID: \(String(describing: self.lastScrollViewID)) and enabling auto-scroll.")
+                        self.shouldAutoScrollOnNewContent = true // Align internal state
+                        withAnimation(.easeInOut(duration: 0.3)) { // Smooth animation
+                            scrollProxy.scrollTo(self.lastScrollViewID, anchor: .bottom)
+                        }
+                    }
+                }
             }
         }
     }
